@@ -17,7 +17,7 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 # =============================================================
 
-def tokenize_texts(texts, tokenizer, max_length=128):
+def tokenize_texts(texts, tokenizer, max_length=64):
     return tokenizer(
         texts,
         padding=True,
@@ -27,7 +27,7 @@ def tokenize_texts(texts, tokenizer, max_length=128):
     )
 
 class DisasterDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=128):
+    def __init__(self, texts, labels, tokenizer, max_length=64):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -45,10 +45,10 @@ class DisasterDataset(Dataset):
             return_tensors="pt"
         )
         item = {key: val.squeeze(0) for key, val in encoding.items()}
-        item['labels'] = torch.tensor(self.labels[idx], dtype=torch.long)
+        item['labels'] = torch.tensor(self.labels[idx], dtype=torch.long) if self.labels else None
         return item
 
-def train_model(model, train_loader, val_loader, num_epochs=3):
+def train_model(model, train_loader, val_loader, num_epochs=2):
     optimizer = AdamW(model.parameters(), lr=2e-5)
     scheduler = get_scheduler("linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=len(train_loader) * num_epochs)
 
@@ -111,11 +111,24 @@ def validate_model(model, val_loader):
 
 # import train data
 tarin_data = pd.read_csv('train.csv')
-texts = tarin_data['text'].tolist()
+# check "location" and "keyword" columns for missing values
+# print(tarin_data[['location', 'keyword']].isnull().sum())
+# fill missing values with 'unknown'
+tarin_data['location'] = tarin_data['location'].fillna('unknown')
+tarin_data['keyword'] = tarin_data['keyword'].fillna('unknown')
+tarin_data['combined_text'] = tarin_data['keyword'] + " " + tarin_data['location'] + " " + tarin_data['text']
+texts = tarin_data['combined_text'].tolist()
 labels = tarin_data['target'].tolist()
+
 # import test data
 test_data = pd.read_csv('test.csv')
-test_texts = test_data['text'].tolist()
+# check "location" and "keyword" columns for missing values
+# print(test_data[['location', 'keyword']].isnull().sum())
+# fill missing values with 'unknown'
+test_data['location'] = test_data['location'].fillna('unknown')
+test_data['keyword'] = test_data['keyword'].fillna('unknown')
+test_data['combined_text'] = test_data['keyword'] + " " + test_data['location'] + " " + test_data['text']
+test_texts = test_data['combined_text'].tolist()
 
 # split data (80%: train, 20%: validation)
 train_texts, val_texts, train_labels, val_labels = train_test_split(
@@ -133,7 +146,7 @@ val_loader = DataLoader(val_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
 
 model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
-train_model(model, train_loader, val_loader, num_epochs=3)
+train_model(model, train_loader, val_loader, num_epochs=2)
 
 # optimizer = AdamW(model.parameters(), lr=2e-5, eps=1e-8)
 # test_encodings = tokenize_texts(test_texts, tokenizer)
